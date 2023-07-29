@@ -1,0 +1,18 @@
+name: shell-ai-hackaton
+channels:
+     - conda-forge
+     - anaconda
+     - defaults
+dependencies:
+- python=3.9.16
+- pandas
+- numpy
+- scikit-learn
+- tpot
+- pulp
+- matplotlib
+- seaborn
+- pip
+- pip:
+  - notebook
+  - plotly
