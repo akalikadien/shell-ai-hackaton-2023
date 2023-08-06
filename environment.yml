@@ -16,3 +16,4 @@ dependencies:
 - pip:
   - notebook
   - plotly
+  - pyscipopt
