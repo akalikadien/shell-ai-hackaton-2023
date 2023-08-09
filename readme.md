@@ -1,6 +1,11 @@
 # shell-ai-hackaton-2023
 Data and code related to [the Shell AI Hackaton 2023](https://www.hackerearth.com/challenges/competitive/shellai-hackathon-2023/)
 
+## The challenge
+![figures/problem_description.png](figures/problem_description.png)
+![figures/challenge_objectives.png](figures/challenge_objectives.png)
+![figures/constraints.png](figures/constraints.png)
+
 ## Installation
 First clone the repository:
 ```bash
