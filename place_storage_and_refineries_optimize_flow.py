@@ -29,8 +29,8 @@ class BiomassGeneticAlgorithm:
         self.flow_sites_to_depots, self.flow_depots_to_refineries = None, None
 
         # genetic algorithm variables
-        self.population_size = 50
-        self.num_generations = 50
+        self.population_size = 100
+        self.num_generations = 500
         self.crossover_rate = 0.8
         self.mutation_rate = 0.2
         self.elite_size = 5
@@ -52,10 +52,14 @@ class BiomassGeneticAlgorithm:
         if self.best_flow_solution is None:
             raise ValueError('No best flow solution found. Run genetic algorithm first.')
         self.flow_sites_to_depots, self.flow_depots_to_refineries = self.best_flow_solution
+        # ensure that only positive values are used for the underutilization cost
         # calculate underutilization cost for depots by checking how far below the capacity the depots are
-        underutilization_cost_depots = np.sum(20000 - np.sum(self.flow_sites_to_depots, axis=0))
+        underutilization_cost_depots = np.sum(np.maximum(0, 20000 - np.sum(self.flow_sites_to_depots, axis=0)))
         # calculate underutilization cost for refineries by checking how far below the capacity the refineries are
-        underutilization_cost_refineries = np.sum(100000 - np.sum(self.flow_depots_to_refineries, axis=0))
+        underutilization_cost_refineries = np.sum(np.maximum(0, 100000 - np.sum(self.flow_depots_to_refineries, axis=0)))
+
+        # underutilization_cost_depots = np.sum(20000 - np.sum(self.flow_sites_to_depots, axis=0))
+        # underutilization_cost_refineries = np.sum(100000 - np.sum(self.flow_depots_to_refineries, axis=0))
         underutilization_cost = underutilization_cost_depots + underutilization_cost_refineries
         return underutilization_cost
 
@@ -136,11 +140,17 @@ class BiomassGeneticAlgorithm:
     # Selection operation
     def select_parents(self, population):
         # Calculate fitness for each solution in the population
-        fitness_values = np.array(
-            [self.fitness(solution) for solution in population])
-        # Convert the fitness values to probabilities (lower fitness is better)
-        probs = (1 / fitness_values) / np.sum(1 / fitness_values)
-        # Select two parents probabilistically
+        fitness_values = np.array([self.fitness(solution) for solution in population])
+
+        # scale fitness values to avoid very small/large probabilities
+        scaled_fitness = fitness_values - np.min(fitness_values) + 1e-10
+
+        # calculate probabilities
+        probs = scaled_fitness / np.sum(scaled_fitness)
+        probs = np.clip(probs, 0, 1)  # ensure probabilities are within [0, 1]
+        probs /= np.sum(probs)  # normalize probabilities
+
+        # select two parents probabilistically
         parents_indices = np.random.choice(len(population), size=2, p=probs)
         return population[parents_indices[0]], population[parents_indices[1]]
 
