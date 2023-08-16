@@ -29,8 +29,8 @@ class BiomassGeneticAlgorithm:
         self.flow_sites_to_depots, self.flow_depots_to_refineries = None, None
 
         # genetic algorithm variables
-        self.population_size = 100
-        self.num_generations = 500
+        self.population_size = 50
+        self.num_generations = 50
         self.crossover_rate = 0.8
         self.mutation_rate = 0.2
         self.elite_size = 5
@@ -38,30 +38,6 @@ class BiomassGeneticAlgorithm:
     @staticmethod
     def calculate_overall_cost(transportation_cost, underutilization_cost):
         return 0.001 * transportation_cost + underutilization_cost
-
-    def calculate_transportation_cost(self):
-        if self.best_flow_solution is None:
-            raise ValueError('No best flow solution found. Run genetic algorithm first.')
-        self.flow_sites_to_depots, self.flow_depots_to_refineries = self.best_flow_solution
-        cost_sites_to_depots = np.sum(self.flow_sites_to_depots * self.dist_sites_to_depots)
-        cost_depots_to_refineries = np.sum(self.flow_depots_to_refineries * self.dist_depots_to_refineries)
-        transportation_cost = cost_sites_to_depots + cost_depots_to_refineries
-        return transportation_cost
-
-    def calculate_underutilization_cost(self):
-        if self.best_flow_solution is None:
-            raise ValueError('No best flow solution found. Run genetic algorithm first.')
-        self.flow_sites_to_depots, self.flow_depots_to_refineries = self.best_flow_solution
-        # ensure that only positive values are used for the underutilization cost
-        # calculate underutilization cost for depots by checking how far below the capacity the depots are
-        underutilization_cost_depots = np.sum(np.maximum(0, 20000 - np.sum(self.flow_sites_to_depots, axis=0)))
-        # calculate underutilization cost for refineries by checking how far below the capacity the refineries are
-        underutilization_cost_refineries = np.sum(np.maximum(0, 100000 - np.sum(self.flow_depots_to_refineries, axis=0)))
-
-        # underutilization_cost_depots = np.sum(20000 - np.sum(self.flow_sites_to_depots, axis=0))
-        # underutilization_cost_refineries = np.sum(100000 - np.sum(self.flow_depots_to_refineries, axis=0))
-        underutilization_cost = underutilization_cost_depots + underutilization_cost_refineries
-        return underutilization_cost
 
     def check_constraints(self):
         # 1. Ensure the biomass procured for processing from each harvesting site 'i' is less than or equal to that site's biomass.
@@ -130,12 +106,35 @@ class BiomassGeneticAlgorithm:
             population.append((flow_sites_to_depots, flow_depots_to_refineries))
         return population
 
+    @staticmethod
+    def calculate_underutilization_cost_for_solution(flow_sites_to_depots, flow_depots_to_refineries):
+        underutilization_cost_depots = np.sum(np.maximum(0, 20000 - np.sum(flow_sites_to_depots, axis=0)))
+        underutilization_cost_refineries = np.sum(np.maximum(0, 100000 - np.sum(flow_depots_to_refineries, axis=0)))
+        underutilization_cost = underutilization_cost_depots + underutilization_cost_refineries
+        return underutilization_cost
+
+    # Calculate transportation cost for a given flow solution
+    def calculate_transportation_cost_for_solution(self, flow_sites_to_depots, flow_depots_to_refineries):
+        cost_sites_to_depots = np.sum(flow_sites_to_depots * self.dist_sites_to_depots)
+        cost_depots_to_refineries = np.sum(flow_depots_to_refineries * self.dist_depots_to_refineries)
+        transportation_cost = cost_sites_to_depots + cost_depots_to_refineries
+        return transportation_cost
+
     # Fitness function to evaluate a solution
     def fitness(self, solution):
         flow_sites_to_depots, flow_depots_to_refineries = solution
-        cost_sites_to_depots = np.sum(flow_sites_to_depots * self.dist_sites_to_depots)
-        cost_depots_to_refineries = np.sum(flow_depots_to_refineries * self.dist_depots_to_refineries)
-        return cost_sites_to_depots + cost_depots_to_refineries
+        # update flow values with the new solution
+        self.flow_sites_to_depots, self.flow_depots_to_refineries = flow_sites_to_depots, flow_depots_to_refineries
+        # calculate transportation cost
+        transportation_cost = self.calculate_transportation_cost_for_solution(flow_sites_to_depots,
+                                                                              flow_depots_to_refineries)
+        # calculate underutilization cost
+        underutilization_cost = self.calculate_underutilization_cost_for_solution(flow_sites_to_depots,
+                                                                                  flow_depots_to_refineries)
+        # calculate overall cost
+        overall_cost = self.calculate_overall_cost(transportation_cost, underutilization_cost)
+
+        return overall_cost
 
     # Selection operation
     def select_parents(self, population):
@@ -170,14 +169,32 @@ class BiomassGeneticAlgorithm:
         offspring4 = np.vstack((child4[:crossover_point], child2[crossover_point:]))
         return offspring1, offspring3
 
-    # Mutation operation
     def mutate(self, offspring):
         if np.random.rand() > self.mutation_rate:
             return offspring
-        # Add small random values to the flow matrices
+
         offspring1, offspring2 = offspring
-        offspring1 += np.random.randn(*offspring1.shape) * 0.05 * np.max(offspring1)
-        offspring2 += np.random.randn(*offspring2.shape) * 0.05 * np.max(offspring2)
+
+        for i in range(offspring1.shape[0]):
+            for j in range(offspring1.shape[1]):
+                # calculate the remaining capacity of the depot
+                remaining_capacity = max(0, 20000 - np.sum(offspring1[:, j]))
+
+                # generate a new random flow within the minimum of the remaining capacity and the site's biomass
+                new_flow = np.random.rand() * min(remaining_capacity, self.biomass_df_values[i])
+                # new_flow = np.random.rand() * remaining_capacity
+                offspring1[i, j] = new_flow
+
+        # Mutation for flow from depots to refineries
+        for j in range(offspring2.shape[0]):
+            for k in range(offspring2.shape[1]):
+                # Calculate the remaining capacity of the refinery
+                remaining_capacity = max(0, 100000 - np.sum(offspring2[j, :]))
+
+                # Generate a new random flow within the remaining capacity
+                new_flow = np.random.rand() * remaining_capacity
+                offspring2[j, k] = new_flow
+
         return offspring1, offspring2
 
     def run_genetic_algorithm(self, print_progress=False):
@@ -206,18 +223,16 @@ class BiomassGeneticAlgorithm:
         best_solution = min(population, key=lambda solution: self.fitness(solution))
         self.best_flow_solution = best_solution
 
-        # calulate overall costs
-        transportation_cost = self.calculate_transportation_cost()
-        underutilization_cost = self.calculate_underutilization_cost()
-        overall_cost = self.calculate_overall_cost(transportation_cost, underutilization_cost)
-
-        # check if the solution is feasible
-        constraints_dict = self.check_constraints()
-
         if print_progress:
-            print("Transportation cost:", transportation_cost)
-            print("Underutilization cost:", underutilization_cost)
-            print("Overall cost:", overall_cost)
+            # calulate overall costs for best solution
+            solution = self.best_flow_solution
+            print(f'Transportation cost: {self.calculate_transportation_cost_for_solution(solution[0], solution[1])}')
+            print(f'Underutilization cost: {self.calculate_underutilization_cost_for_solution(solution[0], solution[1])}')
+            print('Calculating overall costs for best solution')
+            print(self.fitness(solution))
+
+            # check if the solution is feasible
+            constraints_dict = self.check_constraints()
             print("Constraints:", constraints_dict)
 
 
