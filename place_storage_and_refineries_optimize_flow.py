@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 
 class BiomassGeneticAlgorithm:
-    def __init__(self, biomass_history_file, distance_matrix_file, year, num_depots, num_biorefineries):
+    def __init__(self, biomass_history_file, distance_matrix_file, year, num_depots, num_biorefineries, genetic_algo_params_dict=None):
         # data and initial placement variables
         self.biomass_history_file = biomass_history_file
         self.distance_matrix_file = distance_matrix_file
@@ -29,11 +29,18 @@ class BiomassGeneticAlgorithm:
         self.flow_sites_to_depots, self.flow_depots_to_refineries = None, None
 
         # genetic algorithm variables
-        self.population_size = 50
-        self.num_generations = 50
-        self.crossover_rate = 0.8
-        self.mutation_rate = 0.2
-        self.elite_size = 5
+        if genetic_algo_params_dict is None:
+            self.population_size = 50
+            self.num_generations = 50
+            self.crossover_rate = 0.8
+            self.mutation_rate = 0.2
+            self.elite_size = 5
+        else:
+            self.population_size = genetic_algo_params_dict['population_size']
+            self.num_generations = genetic_algo_params_dict['num_generations']
+            self.crossover_rate = genetic_algo_params_dict['crossover_rate']
+            self.mutation_rate = genetic_algo_params_dict['mutation_rate']
+            self.elite_size = genetic_algo_params_dict['elite_size']
 
     @staticmethod
     def calculate_overall_cost(transportation_cost, underutilization_cost):
@@ -141,15 +148,19 @@ class BiomassGeneticAlgorithm:
         # Calculate fitness for each solution in the population
         fitness_values = np.array([self.fitness(solution) for solution in population])
 
-        # scale fitness values to avoid very small/large probabilities
         scaled_fitness = fitness_values - np.min(fitness_values) + 1e-10
+        sum_scaled_fitness = np.sum(scaled_fitness)  # Calculate the sum of scaled fitness values
 
-        # calculate probabilities
-        probs = scaled_fitness / np.sum(scaled_fitness)
-        probs = np.clip(probs, 0, 1)  # ensure probabilities are within [0, 1]
-        probs /= np.sum(probs)  # normalize probabilities
+        if sum_scaled_fitness == 0:
+            # Handle the case where all scaled fitness values are very small or zero
+            # In this case, assign equal probabilities to all solutions
+            probs = np.full(len(population), 1 / len(population))
+        else:
+            probs = scaled_fitness / sum_scaled_fitness
 
-        # select two parents probabilistically
+        probs = np.clip(probs, 0, 1)
+        probs /= np.sum(probs)
+
         parents_indices = np.random.choice(len(population), size=2, p=probs)
         return population[parents_indices[0]], population[parents_indices[1]]
 
@@ -167,6 +178,20 @@ class BiomassGeneticAlgorithm:
         crossover_point = np.random.randint(0, child2.shape[0])
         offspring3 = np.vstack((child2[:crossover_point], child4[crossover_point:]))
         offspring4 = np.vstack((child4[:crossover_point], child2[crossover_point:]))
+
+        # # adjust flows to satisfy Constraint 7 for child1 and child3
+        # for j in range(child1.shape[1]):
+        #     total_exit_flow = np.sum(child2[j, :])
+        #     total_entry_flow = np.sum(child1[:, j])
+        #     scaling_factor = total_exit_flow / total_entry_flow
+        #     child1[:, j] *= scaling_factor
+        #
+        # for j in range(child3.shape[1]):
+        #     total_exit_flow = np.sum(child4[j, :])
+        #     total_entry_flow = np.sum(child3[:, j])
+        #     scaling_factor = total_exit_flow / total_entry_flow
+        #     child3[:, j] *= scaling_factor
+
         return offspring1, offspring3
 
     def mutate(self, offspring):
@@ -187,6 +212,11 @@ class BiomassGeneticAlgorithm:
 
         # Mutation for flow from depots to refineries
         for j in range(offspring2.shape[0]):
+            # adjust the flow such that the total exit flow from the depot is equal to the total entry flow
+            total_exit_flow = np.sum(offspring2[j, :])
+            total_entry_flow = np.sum(offspring1[:, j])
+            scaling_factor = total_exit_flow / total_entry_flow
+            offspring1[:, j] *= scaling_factor
             for k in range(offspring2.shape[1]):
                 # Calculate the remaining capacity of the refinery
                 remaining_capacity = max(0, 100000 - np.sum(offspring2[j, :]))
@@ -243,5 +273,13 @@ if __name__ == "__main__":
     num_depots = 25
     num_biorefineries = 5
 
-    optimizer = BiomassGeneticAlgorithm(biomass_history_file, distance_matrix_file, year, num_depots, num_biorefineries)
+    genetic_algo_params = {
+        'population_size': 100,
+        'num_generations': 100,
+        'elite_size': 10,
+        'crossover_rate': 0.8,
+        'mutation_rate': 0.2
+    }
+
+    optimizer = BiomassGeneticAlgorithm(biomass_history_file, distance_matrix_file, year, num_depots, num_biorefineries, genetic_algo_params)
     optimizer.run_genetic_algorithm(print_progress=True)
