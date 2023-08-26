@@ -85,7 +85,7 @@ if __name__ == "__main__":
     all_data_df = pd.DataFrame(columns=['year', 'data_type', 'source_index', 'destination_index', 'value'])
     # biomass forecast processing
     # read and process biomass forecast, write to csv file for example submission
-    biomass_forecast_df = pd.read_csv('dataset/3.predictions/230809_RF_biomass_prediction.csv')
+    biomass_forecast_df = pd.read_csv('dataset/3.predictions/20230826Biomass_Predictions.csv')
     biomass_forecast_df = process_biomass_forecast(biomass_forecast_df)
     # read biomass flows for 2018 and 2019
     biomass_flow_2018_df = pd.read_csv('dataset/3.predictions/biomass_flow_2018.csv')

@@ -273,6 +273,7 @@ class BiomassGeneticAlgorithm:
         return offspring1, offspring3
 
     def mutate(self, offspring):
+        # approach as commented on issue 8 (does not work for constraint 1, 2, 6, and 7)
         if np.random.rand() > self.mutation_rate:
             return offspring
 
@@ -312,6 +313,7 @@ class BiomassGeneticAlgorithm:
         return offspring1, offspring2
 
     # def mutate(self, offspring):
+    #    # old approach (that kinda worked, but not for constraint 1, 2 and 7)
     #     if np.random.rand() > self.mutation_rate:
     #         return offspring
     #
@@ -408,7 +410,7 @@ class BiomassGeneticAlgorithm:
 
 if __name__ == "__main__":
     # biomass_history_file = 'dataset/1.initial_datasets/Biomass_History.csv'
-    biomass_history_file = 'dataset/3.predictions/230809_RF_biomass_prediction.csv'
+    biomass_history_file = 'dataset/3.predictions/20230826Biomass_Predictions.csv'
     distance_matrix_file = 'dataset/1.initial_datasets/Distance_Matrix.csv'
     year = '2018'
     num_depots = 20
