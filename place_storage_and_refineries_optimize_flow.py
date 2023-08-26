@@ -9,6 +9,8 @@ from sklearn_extra.cluster import KMedoids
 import numpy as np
 from tqdm import tqdm
 
+from process_all_data_for_submission import process_flow_matrix
+
 
 class BiomassGeneticAlgorithm:
     def __init__(self, biomass_history_file, distance_matrix_file, year, num_depots, num_biorefineries, genetic_algo_params_dict=None, find_depot_and_refinery_clusters=True, depot_cluster_centers=None, refinery_cluster_centers=None):
@@ -21,6 +23,8 @@ class BiomassGeneticAlgorithm:
         self.biomass_df = None
         self.depot_cluster_centers = None
         self.refinery_cluster_centers = None
+        self.depot_cluster_center_location_indices = None
+        self.refinery_cluster_center_location_indices = None
         self.dist_sites_to_depots = None
         self.dist_depots_to_refineries = None
         self.biomass_df_values = None
@@ -131,11 +135,15 @@ class BiomassGeneticAlgorithm:
             kmedoids = KMedoids(n_clusters=self.num_depots, random_state=42).fit(X)
             # self.biomass_df.loc[:, 'depot_cluster'] = kmedoids.labels_
             self.depot_cluster_centers = kmedoids.cluster_centers_
+            # save the location index of each depot cluster center for later use (first item in each cluster)
+            self.depot_cluster_center_location_indices = kmedoids.medoid_indices_
 
             # Location Optimization for Bio-refineries using K-means clustering
             kmedoids_refinery = KMedoids(n_clusters=self.num_biorefineries, random_state=42).fit(self.depot_cluster_centers)
             # depot_centers_df.loc[:, 'refinery_cluster'] = kmedoids_refinery.labels_
             self.refinery_cluster_centers = kmedoids_refinery.cluster_centers_
+            # save the location index of each refinery cluster center for later use (first item in each cluster)
+            self.refinery_cluster_center_location_indices = kmedoids_refinery.medoid_indices_
         elif self.depot_cluster_centers is None or self.refinery_cluster_centers is None:
             raise ValueError('Must specify depot and refinery cluster centers if find_depot_and_refinery_clusters is False')
 
@@ -326,6 +334,23 @@ class BiomassGeneticAlgorithm:
         self.flow_sites_to_depots = best_solution[0]
         self.flow_depots_to_refineries = best_solution[1]
 
+        # write biomass and pellet flow to csv, correct indices of depots and refineries to location indices
+        biomass_flow_df = process_flow_matrix(optimizer.flow_sites_to_depots, self.year, 'biomass')
+        # in biomass_flow_df the destination_index is now the depot's index, but this should be mapped to the correct
+        # value from the list of self.depot_cluster_center_location_indices
+        biomass_flow_df['destination_index'] = self.depot_cluster_center_location_indices[
+            biomass_flow_df['destination_index'].values]
+        pellet_flow_df = process_flow_matrix(optimizer.flow_depots_to_refineries, self.year, 'pellet')
+        # in pellet_flow_df the destination_index is now the refinery's index, but this should be mapped to the correct
+        # value from the list of self.refinery_cluster_center_location_indices
+        pellet_flow_df['destination_index'] = self.refinery_cluster_center_location_indices[
+            pellet_flow_df['destination_index'].values]
+        # and the source index should be mapped to the correct value from the list of self.depot_cluster_center_location_indices
+        pellet_flow_df['source_index'] = self.depot_cluster_center_location_indices[
+            pellet_flow_df['source_index'].values]
+        biomass_flow_df.to_csv(f'dataset/3.predictions/biomass_flow_{self.year}.csv', index=False)
+        pellet_flow_df.to_csv(f'dataset/3.predictions/pellet_flow_{self.year}.csv', index=False)
+
         if print_progress:
             # calulate overall costs for best solution
             print(f'Transportation cost: {self.calculate_transportation_cost_for_solution(self.flow_sites_to_depots, self.flow_depots_to_refineries)}')
@@ -339,7 +364,6 @@ class BiomassGeneticAlgorithm:
 
 
 if __name__ == "__main__":
-    from process_all_data_for_submission import process_flow_matrix
     biomass_history_file = 'dataset/1.initial_datasets/Biomass_History.csv'
     distance_matrix_file = 'dataset/1.initial_datasets/Distance_Matrix.csv'
     year = '2017'
@@ -364,9 +388,3 @@ if __name__ == "__main__":
                                         depot_cluster_centers=None,
                                         refinery_cluster_centers=None)
     optimizer.run_genetic_algorithm(print_progress=True)
-    # write biomass and pellet flow to csv
-    biomass_flow_df = process_flow_matrix(optimizer.flow_sites_to_depots, year, 'biomass')
-    pellet_flow_df = process_flow_matrix(optimizer.flow_depots_to_refineries, year, 'pellet')
-    biomass_flow_df.to_csv(f'dataset/3.predictions/biomass_flow_{year}.csv', index=False)
-    pellet_flow_df.to_csv(f'dataset/3.predictions/pellet_flow_{year}.csv', index=False)
-
