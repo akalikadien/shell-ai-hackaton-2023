@@ -339,6 +339,7 @@ class BiomassGeneticAlgorithm:
 
 
 if __name__ == "__main__":
+    from process_all_data_for_submission import process_flow_matrix
     biomass_history_file = 'dataset/1.initial_datasets/Biomass_History.csv'
     distance_matrix_file = 'dataset/1.initial_datasets/Distance_Matrix.csv'
     year = '2017'
@@ -363,3 +364,9 @@ if __name__ == "__main__":
                                         depot_cluster_centers=None,
                                         refinery_cluster_centers=None)
     optimizer.run_genetic_algorithm(print_progress=True)
+    # write biomass and pellet flow to csv
+    biomass_flow_df = process_flow_matrix(optimizer.flow_sites_to_depots, year, 'biomass')
+    pellet_flow_df = process_flow_matrix(optimizer.flow_depots_to_refineries, year, 'pellet')
+    biomass_flow_df.to_csv(f'dataset/3.predictions/biomass_flow_{year}.csv', index=False)
+    pellet_flow_df.to_csv(f'dataset/3.predictions/pellet_flow_{year}.csv', index=False)
+

@@ -41,10 +41,28 @@ def process_flow_matrix(df, year, biomass_or_pellet):
     # the value is then the flow from source_index to destination_index in the matrix
     # year	data_type	source_index	destination_index	value
     # 2018  {biomass/pellet}_demand_supply  index_from_df  column_from_df  {biomass/pellet}_demand_supply_value
+    # Create an empty DataFrame to store the transformed data
+    transformed_df = pd.DataFrame(columns=['year', 'data_type', 'source_index', 'destination_index', 'value'])
+    # if df is a numpy array, convert to pandas df
+    if isinstance(df, np.ndarray):
+        df = pd.DataFrame(df)
 
+    transformed_data = []
 
+    for source_index in df.index:
+        for destination_index in df.columns:
+            if source_index != destination_index:
+                value = df.loc[source_index, destination_index]
+                if value > 0:
+                    data_type = f"{biomass_or_pellet}_demand_supply"
+                    transformed_data.append({'year': year, 'data_type': data_type, 'source_index': source_index,
+                                             'destination_index': destination_index, 'value': value})
 
-    pass
+    transformed_df = pd.DataFrame(transformed_data)
+
+    # convert year column to int
+    transformed_df['year'] = transformed_df['year'].astype(int)
+    return transformed_df
 
 
 if __name__ == "__main__":
