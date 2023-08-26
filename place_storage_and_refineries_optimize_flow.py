@@ -336,8 +336,8 @@ if __name__ == "__main__":
     biomass_history_file = 'dataset/1.initial_datasets/Biomass_History.csv'
     distance_matrix_file = 'dataset/1.initial_datasets/Distance_Matrix.csv'
     year = '2017'
-    num_depots = 25
-    num_biorefineries = 5
+    num_depots = 20
+    num_biorefineries = 4
 
     genetic_algo_params = {
         'population_size': 50,
