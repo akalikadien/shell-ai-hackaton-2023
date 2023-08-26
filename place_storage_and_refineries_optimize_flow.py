@@ -89,8 +89,14 @@ class BiomassGeneticAlgorithm:
         processed_biomass = self.flow_depots_to_refineries.sum()
         constraint_6 = processed_biomass >= 0.8 * self.biomass_df_values.sum()
         # 7. Verify that the total amount of biomass entering each preprocessing depot is equal to the total amount of pellets exiting that depot (within a tolerance limit of 1e-03).
-        constraint_7 = np.allclose(self.flow_sites_to_depots.sum(axis=0), self.flow_depots_to_refineries.sum(axis=1),
-                                   atol=1e-03)
+        constraint_7 = all(
+            np.isclose(
+                self.flow_sites_to_depots[:, depot].sum(), 
+                self.flow_depots_to_refineries[depot, :].sum(), 
+                atol=1e-03
+            )
+            for depot in range(self.num_depots)
+        )
         # 8. Ensure that there's only one depot per grid block/location and only one biorefinery per grid block/location.
         # This constraint is inherently satisfied by the KMeans clustering, so we can safely set it to True.
         constraint_8 = True
@@ -167,7 +173,7 @@ class BiomassGeneticAlgorithm:
         for _ in range(self.population_size):
             flow_sites_to_depots = np.random.rand(self.n_sites, self.num_depots) * np.tile(self.biomass_df_values[:, None],
                                                                                (1, self.num_depots))
-            flow_depots_to_refineries = np.random.rand(self.num_depots, self.num_biorefineries) * 20000
+            flow_depots_to_refineries = np.random.rand(self.num_depots, self.num_biorefineries)
             population.append((flow_sites_to_depots, flow_depots_to_refineries))
         return population
 
