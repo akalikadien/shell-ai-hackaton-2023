@@ -8,6 +8,7 @@ import pandas as pd
 from sklearn_extra.cluster import KMedoids
 import numpy as np
 from tqdm import tqdm
+import pickle
 
 from process_all_data_for_submission import process_flow_matrix
 
@@ -31,6 +32,7 @@ class BiomassGeneticAlgorithm:
         self.n_sites = None
         self.best_flow_solution = None
         self.flow_sites_to_depots, self.flow_depots_to_refineries = None, None
+        self.final_biomass_demand_supply_df, self.final_pellet_demand_supply_df = None, None
 
         # genetic algorithm variables
         if genetic_algo_params_dict is None:
@@ -348,6 +350,7 @@ class BiomassGeneticAlgorithm:
         # and the source index should be mapped to the correct value from the list of self.depot_cluster_center_location_indices
         pellet_flow_df['source_index'] = self.depot_cluster_center_location_indices[
             pellet_flow_df['source_index'].values]
+        self.final_biomass_demand_supply_df, self.final_pellet_demand_supply_df = biomass_flow_df, pellet_flow_df
         biomass_flow_df.to_csv(f'dataset/3.predictions/biomass_flow_{self.year}.csv', index=False)
         pellet_flow_df.to_csv(f'dataset/3.predictions/pellet_flow_{self.year}.csv', index=False)
 
@@ -388,3 +391,7 @@ if __name__ == "__main__":
                                         depot_cluster_centers=None,
                                         refinery_cluster_centers=None)
     optimizer.run_genetic_algorithm(print_progress=True)
+
+    # write optimizer object to pickle file after running the genetic algorithm
+    with open(f"dataset/3.predictions/optimizer_{year}_dpts_{num_depots}_brfnrs_{num_biorefineries}_pop_{genetic_algo_params['population_size']}.pkl", 'wb') as f:
+        pickle.dump(optimizer, f)
