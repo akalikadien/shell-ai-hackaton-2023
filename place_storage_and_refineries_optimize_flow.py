@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 
 class BiomassGeneticAlgorithm:
-    def __init__(self, biomass_history_file, distance_matrix_file, year, num_depots, num_biorefineries, genetic_algo_params_dict=None):
+    def __init__(self, biomass_history_file, distance_matrix_file, year, num_depots, num_biorefineries, genetic_algo_params_dict=None, find_depot_and_refinery_clusters=True, depot_cluster_centers=None, refinery_cluster_centers=None):
         # data and initial placement variables
         self.biomass_history_file = biomass_history_file
         self.distance_matrix_file = distance_matrix_file
@@ -42,9 +42,37 @@ class BiomassGeneticAlgorithm:
             self.mutation_rate = genetic_algo_params_dict['mutation_rate']
             self.elite_size = genetic_algo_params_dict['elite_size']
 
+        self.find_depot_and_refinery_clusters = find_depot_and_refinery_clusters
+        # add the depot and refinery cluster centers if we have them already
+        if self.find_depot_and_refinery_clusters == False and depot_cluster_centers is not None and refinery_cluster_centers is not None:
+            self.set_cluster_centers(depot_cluster_centers, refinery_cluster_centers)
+        elif self.find_depot_and_refinery_clusters == False and (depot_cluster_centers is None or refinery_cluster_centers is None):
+            raise ValueError('You must provide the depot and refinery cluster centers if you do not want to find them with k-medoids.')
+
     @staticmethod
     def calculate_overall_cost(transportation_cost, underutilization_cost):
         return 0.001 * transportation_cost + underutilization_cost
+
+    @staticmethod
+    def balance_mass(flow_matrix):
+        # Ensure mass balance for each depot (sum of flow in = sum of flow out)
+        for j in range(flow_matrix.shape[1]):
+            total_inflow = np.sum(flow_matrix[:, j])
+            total_outflow = np.sum(flow_matrix[j, :])
+            if total_outflow != 0:  # Avoid division by zero
+                if total_inflow < total_outflow:
+                    # Adjust the inflow to match the outflow
+                    flow_matrix[:, j] *= total_outflow / total_inflow
+                elif total_inflow > total_outflow:
+                    # Adjust the outflow to match the inflow
+                    flow_matrix[j, :] *= total_inflow / total_outflow
+
+        return flow_matrix
+
+    def set_cluster_centers(self, depot_cluster_centers, refinery_cluster_centers):
+        # in case we want to use the cluster centers from another year in our current year
+        self.depot_cluster_centers = depot_cluster_centers
+        self.refinery_cluster_centers = refinery_cluster_centers
 
     def check_constraints(self):
         # 1. Ensure the biomass procured for processing from each harvesting site 'i' is less than or equal to that site's biomass.
@@ -82,27 +110,57 @@ class BiomassGeneticAlgorithm:
         # load data
         biomass_history = pd.read_csv(self.biomass_history_file)
         distance_matrix = pd.read_csv(self.distance_matrix_file)
+        # drop Unnamed: 0 column from distance matrix
+        distance_matrix = distance_matrix.drop('Unnamed: 0', axis=1)
 
         self.biomass_df = biomass_history[['Index', 'Latitude', 'Longitude', self.year]]
         self.biomass_df_values = self.biomass_df[self.year].values
         self.n_sites = len(self.biomass_df)
 
-        # Location Optimization for Preprocessing Depots using K-means clustering
-        X = self.biomass_df[['Latitude', 'Longitude', year]].copy()
-        X[self.year] = (X[self.year] - X[self.year].min()) / (X[self.year].max() - X[self.year].min())  # Normalize biomass values
-        kmedoids = KMedoids(n_clusters=self.num_depots, random_state=42).fit(X)
-        self.biomass_df.loc[:, 'depot_cluster'] = kmedoids.labels_
-        self.depot_cluster_centers = kmedoids.cluster_centers_
+        if self.find_depot_and_refinery_clusters:
+            # Location Optimization for Preprocessing Depots using K-medoids clustering
+            X = self.biomass_df[['Latitude', 'Longitude', year]].copy()
+            # scaling not needed for 1D k-medoids clustering
+            # X[self.year] = (X[self.year] - X[self.year].min()) / (X[self.year].max() - X[self.year].min())  # Normalize biomass values
+            kmedoids = KMedoids(n_clusters=self.num_depots, random_state=42).fit(X)
+            # self.biomass_df.loc[:, 'depot_cluster'] = kmedoids.labels_
+            self.depot_cluster_centers = kmedoids.cluster_centers_
 
-        # Location Optimization for Bio-refineries using K-means clustering
-        kmedoids_refinery = KMedoids(n_clusters=self.num_biorefineries, random_state=42).fit(self.depot_cluster_centers)
+            # Location Optimization for Bio-refineries using K-means clustering
+            kmedoids_refinery = KMedoids(n_clusters=self.num_biorefineries, random_state=42).fit(self.depot_cluster_centers)
+            # depot_centers_df.loc[:, 'refinery_cluster'] = kmedoids_refinery.labels_
+            self.refinery_cluster_centers = kmedoids_refinery.cluster_centers_
+        elif self.depot_cluster_centers is None or self.refinery_cluster_centers is None:
+            raise ValueError('Must specify depot and refinery cluster centers if find_depot_and_refinery_clusters is False')
+
+        # make depot centers dataframe for populating distance matrices
         depot_centers_df = pd.DataFrame(self.depot_cluster_centers, columns=['Latitude', 'Longitude', 'Normalized Biomass'])
-        depot_centers_df.loc[:, 'refinery_cluster'] = kmedoids_refinery.labels_
-        self.refinery_cluster_centers = kmedoids_refinery.cluster_centers_
 
         # Create distance matrices for harvesting sites to depots and depots to refineries
-        self.dist_sites_to_depots = distance_matrix.iloc[:self.n_sites, self.biomass_df['depot_cluster'].unique() + 1].values
-        self.dist_depots_to_refineries = distance_matrix.iloc[self.biomass_df['depot_cluster'].unique(), depot_centers_df['refinery_cluster'].unique() + 1].values
+        self.dist_sites_to_depots = np.zeros((self.n_sites, self.num_depots))
+        self.dist_depots_to_refineries = np.zeros((self.num_depots, self.num_biorefineries))
+
+        depot_centers_indices = {}
+        for i in range(self.num_depots):
+            depot_center = tuple(self.depot_cluster_centers[i, :2])  # Extract Latitude and Longitude
+            depot_indices = self.biomass_df[
+                (self.biomass_df['Latitude'] == depot_center[0]) &
+                (self.biomass_df['Longitude'] == depot_center[1])
+                ]['Index'].values
+            depot_centers_indices[depot_center] = depot_indices
+
+        for i in range(self.n_sites):
+            for j in range(self.num_depots):
+                depot_indices = depot_centers_indices[tuple(self.depot_cluster_centers[j, :2])]
+                self.dist_sites_to_depots[i, j] = distance_matrix.iloc[i, depot_indices].min()
+
+        for j in range(self.num_depots):
+            for k in range(self.num_biorefineries):
+                refinery_indices = depot_centers_df[
+                    (depot_centers_df['Latitude'] == self.refinery_cluster_centers[k, 0]) &
+                    (depot_centers_df['Longitude'] == self.refinery_cluster_centers[k, 1])
+                    ].index
+                self.dist_depots_to_refineries[j, k] = distance_matrix.iloc[depot_indices, refinery_indices].min()
 
     def initialize_population(self):
         population = []
@@ -192,6 +250,9 @@ class BiomassGeneticAlgorithm:
         #     scaling_factor = total_exit_flow / total_entry_flow
         #     child3[:, j] *= scaling_factor
 
+        # Ensure mass balance for the offspring
+        offspring1 = self.balance_mass(offspring1)
+        offspring3 = self.balance_mass(offspring3)
         return offspring1, offspring3
 
     def mutate(self, offspring):
@@ -213,10 +274,10 @@ class BiomassGeneticAlgorithm:
         # Mutation for flow from depots to refineries
         for j in range(offspring2.shape[0]):
             # adjust the flow such that the total exit flow from the depot is equal to the total entry flow
-            total_exit_flow = np.sum(offspring2[j, :])
-            total_entry_flow = np.sum(offspring1[:, j])
-            scaling_factor = total_exit_flow / total_entry_flow
-            offspring1[:, j] *= scaling_factor
+            # total_exit_flow = np.sum(offspring2[j, :])
+            # total_entry_flow = np.sum(offspring1[:, j])
+            # scaling_factor = total_exit_flow / total_entry_flow
+            # offspring1[:, j] *= scaling_factor
             for k in range(offspring2.shape[1]):
                 # Calculate the remaining capacity of the refinery
                 remaining_capacity = max(0, 100000 - np.sum(offspring2[j, :]))
@@ -225,6 +286,9 @@ class BiomassGeneticAlgorithm:
                 new_flow = np.random.rand() * remaining_capacity
                 offspring2[j, k] = new_flow
 
+        # Ensure mass balance for the offspring
+        offspring1 = self.balance_mass(offspring1)
+        offspring2 = self.balance_mass(offspring2)
         return offspring1, offspring2
 
     def run_genetic_algorithm(self, print_progress=False):
@@ -251,15 +315,17 @@ class BiomassGeneticAlgorithm:
             population = new_population
 
         best_solution = min(population, key=lambda solution: self.fitness(solution))
+        # update values for best solution
         self.best_flow_solution = best_solution
+        self.flow_sites_to_depots = best_solution[0]
+        self.flow_depots_to_refineries = best_solution[1]
 
         if print_progress:
             # calulate overall costs for best solution
-            solution = self.best_flow_solution
-            print(f'Transportation cost: {self.calculate_transportation_cost_for_solution(solution[0], solution[1])}')
-            print(f'Underutilization cost: {self.calculate_underutilization_cost_for_solution(solution[0], solution[1])}')
+            print(f'Transportation cost: {self.calculate_transportation_cost_for_solution(self.flow_sites_to_depots, self.flow_depots_to_refineries)}')
+            print(f'Underutilization cost: {self.calculate_underutilization_cost_for_solution(self.flow_sites_to_depots, self.flow_depots_to_refineries)}')
             print('Calculating overall costs for best solution')
-            print(self.fitness(solution))
+            print(self.fitness(self.best_flow_solution))
 
             # check if the solution is feasible
             constraints_dict = self.check_constraints()
@@ -274,12 +340,20 @@ if __name__ == "__main__":
     num_biorefineries = 5
 
     genetic_algo_params = {
-        'population_size': 100,
-        'num_generations': 100,
-        'elite_size': 10,
+        'population_size': 50,
+        'num_generations': 50,
+        'elite_size': 5,
         'crossover_rate': 0.8,
         'mutation_rate': 0.2
     }
 
-    optimizer = BiomassGeneticAlgorithm(biomass_history_file, distance_matrix_file, year, num_depots, num_biorefineries, genetic_algo_params)
+    optimizer = BiomassGeneticAlgorithm(biomass_history_file,
+                                        distance_matrix_file,
+                                        year,
+                                        num_depots,
+                                        num_biorefineries,
+                                        genetic_algo_params,
+                                        find_depot_and_refinery_clusters=True,
+                                        depot_cluster_centers=None,
+                                        refinery_cluster_centers=None)
     optimizer.run_genetic_algorithm(print_progress=True)
