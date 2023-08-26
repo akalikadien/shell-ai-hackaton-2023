@@ -19,7 +19,7 @@ def process_biomass_forecast(df):
     # 2018  biomass_forecast  index_from_df  NaN  biomass_forecast_value
 
     # drop longitude and latitude columns
-    df = df.drop(columns=['Longitude', 'Latitude'])
+    df = df.drop(columns=['Longitude', 'Latitude', 'Index'])
     # unpivot 2018 and 2019 columns
     df = pd.melt(df.reset_index(), id_vars=['index'], var_name='year', value_name='value')
     # drop index column
@@ -65,18 +65,57 @@ def process_flow_matrix(df, year, biomass_or_pellet):
     return transformed_df
 
 
+def process_depot_biorefinery_location(list_of_location_indices, year, depot_or_biorefinery):
+    # year  data_type  source_index  destination_index  value
+    # 2018  {depot/biorefinery}_location  index_from_list  NaN  NaN
+    # Create an empty DataFrame to store the transformed data
+    transformed_df = pd.DataFrame(columns=['year', 'data_type', 'source_index', 'destination_index', 'value'])
+    # iterate over list and add to transformed_df
+    for index in list_of_location_indices:
+        transformed_df = pd.concat([transformed_df, pd.DataFrame({'year': year, 'data_type': f"{depot_or_biorefinery}_location",
+                                                                  'source_index': index, 'destination_index': np.nan,
+                                                                  'value': np.nan}, index=[0])], ignore_index=True)
+    # convert year column to int
+    transformed_df['year'] = transformed_df['year'].astype(int)
+    return transformed_df
+
+
 if __name__ == "__main__":
+    # create empty df to store all data
+    all_data_df = pd.DataFrame(columns=['year', 'data_type', 'source_index', 'destination_index', 'value'])
     # biomass forecast processing
     # read and process biomass forecast, write to csv file for example submission
     biomass_forecast_df = pd.read_csv('dataset/3.predictions/230809_RF_biomass_prediction.csv')
     biomass_forecast_df = process_biomass_forecast(biomass_forecast_df)
+    # read biomass flows for 2018 and 2019
+    biomass_flow_2018_df = pd.read_csv('dataset/3.predictions/biomass_flow_2018.csv')
+    biomass_flow_2019_df = pd.read_csv('dataset/3.predictions/biomass_flow_2019.csv')
+    # read pellet flows for 2018 and 2019
+    pellet_flow_2018_df = pd.read_csv('dataset/3.predictions/pellet_flow_2018.csv')
+    pellet_flow_2019_df = pd.read_csv('dataset/3.predictions/pellet_flow_2019.csv')
+    # read depot and biorefinery locations (unique source and destination indices from pellet_flow_2018_df)
+    depot_location_indices = pellet_flow_2018_df['source_index'].unique()
+    biorefinery_location_indices = pellet_flow_2018_df['destination_index'].unique()
+    # process locations
+    depot_location_df = process_depot_biorefinery_location(depot_location_indices, 20182019, 'depot')
+    biorefinery_location_df = process_depot_biorefinery_location(biorefinery_location_indices, 20182019, 'refinery')
+
+    # concat all dataframes in all_data_df
+    all_data_df = pd.concat([all_data_df, biomass_forecast_df, biomass_flow_2018_df, biomass_flow_2019_df,
+                                pellet_flow_2018_df, pellet_flow_2019_df, depot_location_df, biorefinery_location_df])
+
+    # write to csv file
+    all_data_df.to_csv('dataset/3.predictions/submission.csv', index=False)
+
+
+
     # biomass_forecast_df.to_csv('dataset/3.predictions/submission.csv', index=False)
     # read example submission and concat biomass_forecast_df to bottom of df
-    example_submission_df = pd.read_csv('dataset/1.initial_datasets/sample_submission.csv')
-    example_submission_df = example_submission_df[example_submission_df['data_type'] != 'biomass_forecast']
-    example_submission_df = pd.concat([example_submission_df, biomass_forecast_df])
-    # write to csv file
-    example_submission_df.to_csv('dataset/3.predictions/submission.csv', index=False)
+    # example_submission_df = pd.read_csv('dataset/1.initial_datasets/sample_submission.csv')
+    # example_submission_df = example_submission_df[example_submission_df['data_type'] != 'biomass_forecast']
+    # example_submission_df = pd.concat([example_submission_df, biomass_forecast_df])
+    # # write to csv file
+    # example_submission_df.to_csv('dataset/3.predictions/submission.csv', index=False)
 
 
 

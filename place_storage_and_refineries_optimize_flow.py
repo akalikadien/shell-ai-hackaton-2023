@@ -125,7 +125,8 @@ class BiomassGeneticAlgorithm:
         # drop Unnamed: 0 column from distance matrix
         distance_matrix = distance_matrix.drop('Unnamed: 0', axis=1)
 
-        self.biomass_df = biomass_history[['Index', 'Latitude', 'Longitude', self.year]]
+        # self.biomass_df = biomass_history[['Index', 'Latitude', 'Longitude', self.year]]
+        self.biomass_df = biomass_history[['Index', 'Latitude', 'Longitude', self.year]].copy()
         self.biomass_df_values = self.biomass_df[self.year].values
         self.n_sites = len(self.biomass_df)
 
@@ -277,35 +278,74 @@ class BiomassGeneticAlgorithm:
 
         offspring1, offspring2 = offspring
 
+        # Mutation for flow from sites to depots
+        remaining_biomass = self.biomass_df_values.copy()
+        depot_capacities = np.full(self.num_depots, 20000)
         for i in range(offspring1.shape[0]):
             for j in range(offspring1.shape[1]):
-                # calculate the remaining capacity of the depot
-                remaining_capacity = max(0, 20000 - np.sum(offspring1[:, j]))
-
-                # generate a new random flow within the minimum of the remaining capacity and the site's biomass
-                new_flow = np.random.rand() * min(remaining_capacity, self.biomass_df_values[i])
-                # new_flow = np.random.rand() * remaining_capacity
-                offspring1[i, j] = new_flow
+                # Calculate the remaining capacity of the depot
+                remaining_capacity = depot_capacities[j]
+                if remaining_capacity > 0 and remaining_biomass[i] > 0:
+                    # Generate a new flow within the minimum of the remaining capacity, the site's biomass, and the remaining biomass
+                    new_flow = min(remaining_capacity, remaining_biomass[i])
+                    offspring1[i, j] = new_flow
+                    remaining_biomass[i] -= new_flow
+                    depot_capacities[j] -= new_flow
 
         # Mutation for flow from depots to refineries
+        remaining_capacity = np.full(self.num_biorefineries, 100000)
         for j in range(offspring2.shape[0]):
-            # adjust the flow such that the total exit flow from the depot is equal to the total entry flow
-            # total_exit_flow = np.sum(offspring2[j, :])
-            # total_entry_flow = np.sum(offspring1[:, j])
-            # scaling_factor = total_exit_flow / total_entry_flow
-            # offspring1[:, j] *= scaling_factor
             for k in range(offspring2.shape[1]):
                 # Calculate the remaining capacity of the refinery
-                remaining_capacity = max(0, 100000 - np.sum(offspring2[j, :]))
-
-                # Generate a new random flow within the remaining capacity
-                new_flow = np.random.rand() * remaining_capacity
-                offspring2[j, k] = new_flow
+                depot_remaining_capacity = depot_capacities[j]
+                refinery_remaining_capacity = remaining_capacity[k]
+                if depot_remaining_capacity > 0 and refinery_remaining_capacity > 0:
+                    # Generate a new flow within the remaining capacity
+                    new_flow = min(depot_remaining_capacity, refinery_remaining_capacity)
+                    offspring2[j, k] = new_flow
+                    depot_capacities[j] -= new_flow
+                    remaining_capacity[k] -= new_flow
 
         # Ensure mass balance for the offspring
         offspring1 = self.balance_mass(offspring1)
         offspring2 = self.balance_mass(offspring2)
         return offspring1, offspring2
+
+    # def mutate(self, offspring):
+    #     if np.random.rand() > self.mutation_rate:
+    #         return offspring
+    #
+    #     offspring1, offspring2 = offspring
+    #
+    #     for i in range(offspring1.shape[0]):
+    #         for j in range(offspring1.shape[1]):
+    #             # calculate the remaining capacity of the depot
+    #             remaining_capacity = max(0, 20000 - np.sum(offspring1[:, j]))
+    #
+    #             # generate a new random flow within the minimum of the remaining capacity and the site's biomass
+    #             new_flow = np.random.rand() * min(remaining_capacity, self.biomass_df_values[i])
+    #             # new_flow = np.random.rand() * remaining_capacity
+    #             offspring1[i, j] = new_flow
+    #
+    #     # Mutation for flow from depots to refineries
+    #     for j in range(offspring2.shape[0]):
+    #         # adjust the flow such that the total exit flow from the depot is equal to the total entry flow
+    #         # total_exit_flow = np.sum(offspring2[j, :])
+    #         # total_entry_flow = np.sum(offspring1[:, j])
+    #         # scaling_factor = total_exit_flow / total_entry_flow
+    #         # offspring1[:, j] *= scaling_factor
+    #         for k in range(offspring2.shape[1]):
+    #             # Calculate the remaining capacity of the refinery
+    #             remaining_capacity = max(0, 100000 - np.sum(offspring2[j, :]))
+    #
+    #             # Generate a new random flow within the remaining capacity
+    #             new_flow = np.random.rand() * remaining_capacity
+    #             offspring2[j, k] = new_flow
+    #
+    #     # Ensure mass balance for the offspring
+    #     offspring1 = self.balance_mass(offspring1)
+    #     offspring2 = self.balance_mass(offspring2)
+    #     return offspring1, offspring2
 
     def run_genetic_algorithm(self, print_progress=False):
         # initialize data
@@ -367,9 +407,10 @@ class BiomassGeneticAlgorithm:
 
 
 if __name__ == "__main__":
-    biomass_history_file = 'dataset/1.initial_datasets/Biomass_History.csv'
+    # biomass_history_file = 'dataset/1.initial_datasets/Biomass_History.csv'
+    biomass_history_file = 'dataset/3.predictions/230809_RF_biomass_prediction.csv'
     distance_matrix_file = 'dataset/1.initial_datasets/Distance_Matrix.csv'
-    year = '2017'
+    year = '2018'
     num_depots = 20
     num_biorefineries = 4
 
@@ -381,6 +422,7 @@ if __name__ == "__main__":
         'mutation_rate': 0.2
     }
 
+    # first run the genetic algo for 2018 normally
     optimizer = BiomassGeneticAlgorithm(biomass_history_file,
                                         distance_matrix_file,
                                         year,
@@ -391,7 +433,25 @@ if __name__ == "__main__":
                                         depot_cluster_centers=None,
                                         refinery_cluster_centers=None)
     optimizer.run_genetic_algorithm(print_progress=True)
+    depot_cluster_center_location_indices_2018 = optimizer.depot_cluster_center_location_indices
+    refinery_cluster_center_location_indices_2018 = optimizer.refinery_cluster_center_location_indices
 
     # write optimizer object to pickle file after running the genetic algorithm
     with open(f"dataset/3.predictions/optimizer_{year}_dpts_{num_depots}_brfnrs_{num_biorefineries}_pop_{genetic_algo_params['population_size']}.pkl", 'wb') as f:
         pickle.dump(optimizer, f)
+
+    # then use the depot and refinery cluster centers from the 2018 run to run the genetic algo for 2019
+    # load the depot and refinery cluster centers from the 2018 run
+    depot_cluster_centers_2018 = optimizer.depot_cluster_centers
+    refinery_cluster_centers_2018 = optimizer.refinery_cluster_centers
+
+    # run the genetic algo for 2019 using the depot and refinery cluster centers from the 2018 run
+    year = '2019'
+    optimizer_2019 = BiomassGeneticAlgorithm(biomass_history_file, distance_matrix_file, year, num_depots, num_biorefineries, genetic_algo_params, find_depot_and_refinery_clusters=False, depot_cluster_centers=depot_cluster_centers_2018, refinery_cluster_centers=refinery_cluster_centers_2018)
+    optimizer_2019.depot_cluster_center_location_indices = depot_cluster_center_location_indices_2018
+    optimizer_2019.refinery_cluster_center_location_indices = refinery_cluster_center_location_indices_2018
+    optimizer_2019.run_genetic_algorithm(print_progress=True)
+
+    # write optimizer object to pickle file after running the genetic algorithm
+    with open(f"dataset/3.predictions/optimizer_{year}_dpts_{num_depots}_brfnrs_{num_biorefineries}_pop_{genetic_algo_params['population_size']}.pkl", 'wb') as f:
+        pickle.dump(optimizer_2019, f)
