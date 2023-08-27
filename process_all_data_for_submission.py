@@ -88,12 +88,17 @@ if __name__ == "__main__":
     biomass_forecast_df = pd.read_csv('dataset/3.predictions/20230826Biomass_Predictions.csv')
     biomass_forecast_df = process_biomass_forecast(biomass_forecast_df)
     # read biomass flows for 2018 and 2019
+    # for vivek's file
+    # biomass_flow_2018_df = pd.read_csv('dataset/3.predictions/2018_flow.csv')
+    # biomass_flow_2019_df = pd.read_csv('dataset/3.predictions/2019_flow.csv')
     biomass_flow_2018_df = pd.read_csv('dataset/3.predictions/biomass_flow_2018.csv')
     biomass_flow_2019_df = pd.read_csv('dataset/3.predictions/biomass_flow_2019.csv')
     # read pellet flows for 2018 and 2019
     pellet_flow_2018_df = pd.read_csv('dataset/3.predictions/pellet_flow_2018.csv')
     pellet_flow_2019_df = pd.read_csv('dataset/3.predictions/pellet_flow_2019.csv')
     # read depot and biorefinery locations (unique source and destination indices from pellet_flow_2018_df)
+    # for vivek's file we get this from the correct biomass flow matrix instead of pellet flow matrix
+    # depot_location_indices = biomass_flow_2018_df['destination_index'].unique()
     depot_location_indices = pellet_flow_2018_df['source_index'].unique()
     biorefinery_location_indices = pellet_flow_2018_df['destination_index'].unique()
     # process locations

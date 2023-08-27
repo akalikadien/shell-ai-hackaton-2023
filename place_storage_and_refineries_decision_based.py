@@ -48,9 +48,10 @@ class DecisionBasedApproach:
         num_sites = self.predictions_df.shape[0]
         self.flow_depots_to_sites = np.zeros((self.num_depots, num_sites))
         self.flow_depots_to_refineries = np.zeros((self.num_depots, self.num_biorefineries))
+        predictions_df = self.predictions_df.copy()  # use this copy locally to update the biomass availability
 
         # Distribute biomass from depots to sites
-        while np.sum(self.flow_depots_to_sites) < 0.8 * np.sum(self.predictions_df[self.year]):
+        while np.sum(self.flow_depots_to_sites) < 0.8 * np.sum(predictions_df[self.year]):
             for depot_index in range(self.num_depots):
                 depot_capacity = self.max_depot_capacity
 
@@ -59,12 +60,14 @@ class DecisionBasedApproach:
 
                 sorted_site_indices = distances_to_sites.argsort()
                 for site_index in sorted_site_indices:
-                    site_biomass = self.predictions_df.loc[site_index, self.year]
+                    site_biomass = predictions_df.loc[site_index, self.year]
 
                     if site_biomass > 0 and depot_capacity > 0:
                         biomass_to_transport = min(site_biomass, depot_capacity)
                         self.flow_depots_to_sites[depot_index, site_index] = biomass_to_transport
                         depot_capacity -= biomass_to_transport
+                        # also update the biomass availability at the site
+                        predictions_df.loc[site_index, self.year] -= biomass_to_transport
 
         # # Distribute biomass from depots to refineries until the depots are emtpy or the refineries are full
         for depot_index in range(self.num_depots):
@@ -83,7 +86,7 @@ class DecisionBasedApproach:
         biomass_demand_supply_matrix = self.flow_depots_to_sites
         # transpose matrix such that rows are sites and columns are depots
         biomass_demand_supply_matrix = biomass_demand_supply_matrix.T
-        biomass_demand_supply_matrix_df = process_flow_matrix(biomass_demand_supply_matrix, year_1, 'biomass')
+        biomass_demand_supply_matrix_df = process_flow_matrix(biomass_demand_supply_matrix, self.year, 'biomass')
         # transform the destination indices to site location indices (using the dba.depot_indices)
         biomass_demand_supply_matrix_df['destination_index'] = self.depot_indices[
             biomass_demand_supply_matrix_df['destination_index'].values]
@@ -91,7 +94,7 @@ class DecisionBasedApproach:
         pellet_demand_supply_matrix = self.flow_depots_to_refineries
         # transpose matrix such that rows are refineries and columns are depots
         # pellet_demand_supply_matrix = pellet_demand_supply_matrix.T
-        pellet_demand_supply_matrix_df = process_flow_matrix(pellet_demand_supply_matrix, year_1, 'pellet')
+        pellet_demand_supply_matrix_df = process_flow_matrix(pellet_demand_supply_matrix, self.year, 'pellet')
         # transform the destination indices to refinery location indices (using the dba.refinery_indices)
         pellet_demand_supply_matrix_df['destination_index'] = self.refinery_indices[
             pellet_demand_supply_matrix_df['destination_index'].values]
@@ -112,7 +115,7 @@ if __name__ == '__main__':
     # Example usage
     distance_matrix_file = 'dataset/1.initial_datasets/Distance_Matrix.csv'
     predictions_file = 'dataset/3.predictions/20230826Biomass_Predictions.csv'
-    num_depots = 20
+    num_depots = 21
     num_biorefineries = 4
     max_depot_capacity = 20000
     max_refinery_capacity = 100000
@@ -120,7 +123,15 @@ if __name__ == '__main__':
     year_2 = '2018' # but also using 2018 for clustering
 
     dba = DecisionBasedApproach(distance_matrix_file, predictions_file, num_depots, num_biorefineries, max_depot_capacity,
-                                max_refinery_capacity, '2018', '2019')
+                                max_refinery_capacity, year_1, year_2)
     dba.fit()
     dba.solve()
 
+    # do the same for 2018
+    dba_2018 = DecisionBasedApproach(distance_matrix_file, predictions_file, num_depots, num_biorefineries, max_depot_capacity,
+                                max_refinery_capacity, year_2, year_1)
+    # no need for fitting, just use the same predictions_df and depot_indices/refinery_indices
+    dba_2018.predictions_df = dba.predictions_df
+    dba_2018.depot_indices = dba.depot_indices
+    dba_2018.refinery_indices = dba.refinery_indices
+    dba_2018.solve()
