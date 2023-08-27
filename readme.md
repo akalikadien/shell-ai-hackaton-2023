@@ -41,6 +41,12 @@ Currently the interpolation is based on the inverse weighted distance method.
 * biomass\_predictions.csv: predictions for biomass availability in 2018 and 2019
 
 ## Code
+For our final submissions there are 3 python files that are important, predictions via RF with the features from 
+additional_data were done in a separate jupyter notebook.
+* **place_storage_and_refineries_optimize_flow**: contains code to place the depots and refineries using k-medoids, afterwards a genetic algorithm is used to optimize the flow of biomass and pellets, these flows are written to a csv file
+* **place_storage_and_refineries_decision_based**: same, but here we take a decision based approach to place the depots and refineries (assume all depots at max capacity and distribute from there)
+* **process_all_data_for_submission**: contains code to process all data and make a submission file
+* **predict_biomass**: contains code to do an ARIMA prediction on the biomass availability (this is not the prediction that we used for our final submission)
 
 
 ## Citations for data
