@@ -254,19 +254,6 @@ class BiomassGeneticAlgorithm:
         offspring3 = np.vstack((child2[:crossover_point], child4[crossover_point:]))
         offspring4 = np.vstack((child4[:crossover_point], child2[crossover_point:]))
 
-        # # adjust flows to satisfy Constraint 7 for child1 and child3
-        # for j in range(child1.shape[1]):
-        #     total_exit_flow = np.sum(child2[j, :])
-        #     total_entry_flow = np.sum(child1[:, j])
-        #     scaling_factor = total_exit_flow / total_entry_flow
-        #     child1[:, j] *= scaling_factor
-        #
-        # for j in range(child3.shape[1]):
-        #     total_exit_flow = np.sum(child4[j, :])
-        #     total_entry_flow = np.sum(child3[:, j])
-        #     scaling_factor = total_exit_flow / total_entry_flow
-        #     child3[:, j] *= scaling_factor
-
         # Ensure mass balance for the offspring
         offspring1 = self.balance_mass(offspring1)
         offspring3 = self.balance_mass(offspring3)
@@ -310,6 +297,11 @@ class BiomassGeneticAlgorithm:
         # Ensure mass balance for the offspring
         offspring1 = self.balance_mass(offspring1)
         offspring2 = self.balance_mass(offspring2)
+
+        # # if all values in constraints dictionary are true, return the offspring
+        # if not all(self.check_constraints().values()):
+        #     self.mutate(offspring)
+
         return offspring1, offspring2
 
     # def mutate(self, offspring):
@@ -379,12 +371,12 @@ class BiomassGeneticAlgorithm:
         self.flow_depots_to_refineries = best_solution[1]
 
         # write biomass and pellet flow to csv, correct indices of depots and refineries to location indices
-        biomass_flow_df = process_flow_matrix(optimizer.flow_sites_to_depots, self.year, 'biomass')
+        biomass_flow_df = process_flow_matrix(self.flow_sites_to_depots, self.year, 'biomass')
         # in biomass_flow_df the destination_index is now the depot's index, but this should be mapped to the correct
         # value from the list of self.depot_cluster_center_location_indices
         biomass_flow_df['destination_index'] = self.depot_cluster_center_location_indices[
             biomass_flow_df['destination_index'].values]
-        pellet_flow_df = process_flow_matrix(optimizer.flow_depots_to_refineries, self.year, 'pellet')
+        pellet_flow_df = process_flow_matrix(self.flow_depots_to_refineries, self.year, 'pellet')
         # in pellet_flow_df the destination_index is now the refinery's index, but this should be mapped to the correct
         # value from the list of self.refinery_cluster_center_location_indices
         pellet_flow_df['destination_index'] = self.refinery_cluster_center_location_indices[

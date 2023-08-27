@@ -103,46 +103,45 @@ if __name__ == "__main__":
 
     # read biomass flows for 2018 and 2019
     # for vivek's file
-    # biomass_flow_2018_df = pd.read_csv('dataset/3.predictions/2018_flow.csv')
-    # biomass_flow_2019_df = pd.read_csv('dataset/3.predictions/2019_flow.csv')
-    # biomass_flow_2018_df = pd.read_csv('dataset/3.predictions/biomass_flow_2018.csv')
-    # biomass_flow_2019_df = pd.read_csv('dataset/3.predictions/biomass_flow_2019.csv')
-    # # read pellet flows for 2018 and 2019
-    # pellet_flow_2018_df = pd.read_csv('dataset/3.predictions/pellet_flow_2018.csv')
-    # pellet_flow_2019_df = pd.read_csv('dataset/3.predictions/pellet_flow_2019.csv')
+    # biomass_flow_2018_df = pd.read_csv('dataset/3.predictions/LastTry2018_flow.csv')
+    # biomass_flow_2019_df = pd.read_csv('dataset/3.predictions/LastTry2019_flow.csv')
+    biomass_flow_2018_df = pd.read_csv('dataset/3.predictions/biomass_flow_2018.csv')
+    biomass_flow_2019_df = pd.read_csv('dataset/3.predictions/biomass_flow_2019.csv')
+    # read pellet flows for 2018 and 2019
+    pellet_flow_2018_df = pd.read_csv('dataset/3.predictions/pellet_flow_2018.csv')
+    pellet_flow_2019_df = pd.read_csv('dataset/3.predictions/pellet_flow_2019.csv')
 
-    # for genetic algo we can get the flow matrix from the class itself (to make sure changes to processing functions work)
-    # load pickle files for 2018 and 2019 genetic algorithm classes
-    biomass_gen_algo_2018 = pickle.load(open('dataset/3.predictions/optimizer_2018_dpts_20_brfnrs_4_pop_200.pkl', 'rb'))
-    biomass_flow_2018_df = process_flow_matrix(biomass_gen_algo_2018.flow_sites_to_depots, biomass_gen_algo_2018.year, 'biomass')
-    # in biomass_flow_df the destination_index is now the depot's index, but this should be mapped to the correct
-    # value from the list of self.depot_cluster_center_location_indices
-    biomass_flow_2018_df['destination_index'] = biomass_gen_algo_2018.depot_cluster_center_location_indices[
-        biomass_flow_2018_df['destination_index'].values]
-    pellet_flow_2018_df = process_flow_matrix(biomass_gen_algo_2018.flow_depots_to_biorefineries, biomass_gen_algo_2018.year, 'pellet')
-    # in pellet_flow_df the source_index is now the depot's index, but this should be mapped to the correct
-    # value from the list of self.depot_cluster_center_location_indices
-    pellet_flow_2018_df['destination_index'] = biomass_gen_algo_2018.refinery_cluster_center_location_indices[
-        pellet_flow_2018_df['destination_index'].values]
-    # and the source index should be mapped to the correct value from the list of self.depot_cluster_center_location_indices
-    pellet_flow_2018_df['source_index'] = biomass_gen_algo_2018.depot_cluster_center_location_indices[
-        pellet_flow_2018_df['source_index'].values]
-
-    # do the same for 2019
-    biomass_gen_algo_2019 = pickle.load(open('dataset/3.predictions/optimizer_2019_dpts_20_brfnrs_4_pop_200.pkl', 'rb'))
-    biomass_flow_2019_df = process_flow_matrix(biomass_gen_algo_2019.flow_sites_to_depots, biomass_gen_algo_2019.year, 'biomass')
-    # in biomass_flow_df the destination_index is now the depot's index, but this should be mapped to the correct
-    # value from the list of self.depot_cluster_center_location_indices
-    biomass_flow_2019_df['destination_index'] = biomass_gen_algo_2019.depot_cluster_center_location_indices[
-        biomass_flow_2019_df['destination_index'].values]
-    pellet_flow_2019_df = process_flow_matrix(biomass_gen_algo_2019.flow_depots_to_biorefineries, biomass_gen_algo_2019.year, 'pellet')
-    # in pellet_flow_df the source_index is now the depot's index, but this should be mapped to the correct
-    # value from the list of self.depot_cluster_center_location_indices
-    pellet_flow_2019_df['destination_index'] = biomass_gen_algo_2019.refinery_cluster_center_location_indices[
-        pellet_flow_2019_df['destination_index'].values]
-    # and the source index should be mapped to the correct value from the list of self.depot_cluster_center_location_indices
-    pellet_flow_2019_df['source_index'] = biomass_gen_algo_2019.depot_cluster_center_location_indices[
-        pellet_flow_2019_df['source_index'].values]
+    # # for genetic algo we can get the flow matrix from the class itself (to make sure changes to processing functions work)
+    # # load pickle files for 2018 and 2019 genetic algorithm classes
+    # biomass_gen_algo_2018 = pickle.load(open('dataset/3.predictions/optimizer_2018_dpts_20_brfnrs_4_pop_200.pkl', 'rb'))
+    # biomass_flow_2018_df = process_flow_matrix(biomass_gen_algo_2018.flow_sites_to_depots, biomass_gen_algo_2018.year, 'biomass')
+    # # in biomass_flow_df the destination_index is now the depot's index, but this should be mapped to the correct
+    # # value from the list of self.depot_cluster_center_location_indices
+    # biomass_flow_2018_df['destination_index'] = biomass_gen_algo_2018.depot_cluster_center_location_indices[
+    #     biomass_flow_2018_df['destination_index'].values]
+    # pellet_flow_2018_df = process_flow_matrix(biomass_gen_algo_2018.flow_depots_to_biorefineries, biomass_gen_algo_2018.year, 'pellet')
+    # # in pellet_flow_df the source_index is now the depot's index, but this should be mapped to the correct
+    # # value from the list of self.depot_cluster_center_location_indices
+    # pellet_flow_2018_df['destination_index'] = biomass_gen_algo_2018.refinery_cluster_center_location_indices[
+    #     pellet_flow_2018_df['destination_index'].values]
+    # # and the source index should be mapped to the correct value from the list of self.depot_cluster_center_location_indices
+    # pellet_flow_2018_df['source_index'] = biomass_gen_algo_2018.depot_cluster_center_location_indices[
+    #     pellet_flow_2018_df['source_index'].values]
+    # # do the same for 2019
+    # biomass_gen_algo_2019 = pickle.load(open('dataset/3.predictions/optimizer_2019_dpts_20_brfnrs_4_pop_200.pkl', 'rb'))
+    # biomass_flow_2019_df = process_flow_matrix(biomass_gen_algo_2019.flow_sites_to_depots, biomass_gen_algo_2019.year, 'biomass')
+    # # in biomass_flow_df the destination_index is now the depot's index, but this should be mapped to the correct
+    # # value from the list of self.depot_cluster_center_location_indices
+    # biomass_flow_2019_df['destination_index'] = biomass_gen_algo_2019.depot_cluster_center_location_indices[
+    #     biomass_flow_2019_df['destination_index'].values]
+    # pellet_flow_2019_df = process_flow_matrix(biomass_gen_algo_2019.flow_depots_to_biorefineries, biomass_gen_algo_2019.year, 'pellet')
+    # # in pellet_flow_df the source_index is now the depot's index, but this should be mapped to the correct
+    # # value from the list of self.depot_cluster_center_location_indices
+    # pellet_flow_2019_df['destination_index'] = biomass_gen_algo_2019.refinery_cluster_center_location_indices[
+    #     pellet_flow_2019_df['destination_index'].values]
+    # # and the source index should be mapped to the correct value from the list of self.depot_cluster_center_location_indices
+    # pellet_flow_2019_df['source_index'] = biomass_gen_algo_2019.depot_cluster_center_location_indices[
+    #     pellet_flow_2019_df['source_index'].values]
 
     # read depot and biorefinery locations (unique source and destination indices from pellet_flow_2018_df)
     # for vivek's file we get this from the correct biomass flow matrix instead of pellet flow matrix
