@@ -8,10 +8,12 @@ import numpy as np
 import pandas as pd
 from sklearn_extra.cluster import KMedoids
 
+from process_all_data_for_submission import process_flow_matrix
+
 
 class DecisionBasedApproach:
     def __init__(self, distance_matrix_file, predictions_file, num_depots, num_biorefineries, max_depot_capacity,
-                 max_refinery_capacity, year):
+                 max_refinery_capacity, year, year_1):
         self.distance_matrix = pd.read_csv(distance_matrix_file, index_col=0)
         self.predictions_df = pd.read_csv(predictions_file)
         self.num_depots = num_depots
@@ -19,120 +21,106 @@ class DecisionBasedApproach:
         self.max_depot_capacity = max_depot_capacity
         self.max_refinery_capacity = max_refinery_capacity
 
+        # locations of depots and refineries do not change over the years, so use both to cluster
         self.year = year
-        self.site_labels = None
+        self.year_1 = year_1
         self.depot_indices = None
         self.refinery_indices = None
         self.flow_sites_to_depots = None
         self.flow_depots_to_refineries = None
 
     def fit(self):
-        # cluster sites into depots and refineries
-        kmedoids = KMedoids(n_clusters=self.num_depots, random_state=42).fit(
-            self.predictions_df[['Latitude', 'Longitude']].values)
-        self.site_labels = kmedoids.labels_
-        self.depot_indices = kmedoids.medoid_indices_
+        # Cluster sites into depots based on biomass availability for both years
+        kmedoids_depots = KMedoids(n_clusters=self.num_depots, random_state=42).fit(
+            self.predictions_df[[self.year, self.year_1]].values)
+        self.predictions_df['nearest_depot_location_index'] = kmedoids_depots.labels_
+        self.depot_indices = kmedoids_depots.medoid_indices_
 
-        kmedoids_refinery = KMedoids(n_clusters=self.num_biorefineries, random_state=42).fit(
-            self.predictions_df.iloc[self.depot_indices][['Latitude', 'Longitude']].values)
-        self.refinery_indices = kmedoids_refinery.medoid_indices_
+        # Select rows corresponding to depot locations
+        depot_locations = self.predictions_df.iloc[self.depot_indices][['Latitude', 'Longitude']].values
+
+        # Cluster depot locations to place refineries for both years
+        kmedoids_refineries = KMedoids(n_clusters=self.num_biorefineries, random_state=42).fit(depot_locations)
+        self.predictions_df.loc[self.depot_indices, 'nearest_refinery_location_index'] = kmedoids_refineries.labels_
+        self.refinery_indices = kmedoids_refineries.medoid_indices_
 
     def solve(self):
         num_sites = self.predictions_df.shape[0]
-        self.flow_sites_to_depots = np.zeros((num_sites, self.num_depots))
+        self.flow_depots_to_sites = np.zeros((self.num_depots, num_sites))
         self.flow_depots_to_refineries = np.zeros((self.num_depots, self.num_biorefineries))
 
-        # distribute biomass from sites to depots
-        for site_index, site_row in self.predictions_df.iterrows():
-            site_label = self.site_labels[site_index]
-            depot_index = self.depot_indices[site_label]
+        # Distribute biomass from depots to sites
+        while np.sum(self.flow_depots_to_sites) < 0.8 * np.sum(self.predictions_df[self.year]):
+            for depot_index in range(self.num_depots):
+                depot_capacity = self.max_depot_capacity
 
-            biomass_at_site = site_row[str(self.year)]
-            depot_capacity = min(self.max_depot_capacity, biomass_at_site)
+                depot_location_index = self.depot_indices[depot_index]
+                distances_to_sites = self.distance_matrix.loc[depot_location_index]
 
-            self.flow_sites_to_depots[site_index, depot_index] = depot_capacity
+                sorted_site_indices = distances_to_sites.argsort()
+                for site_index in sorted_site_indices:
+                    site_biomass = self.predictions_df.loc[site_index, self.year]
 
-        # distribute biomass from depots to refineries
+                    if site_biomass > 0 and depot_capacity > 0:
+                        biomass_to_transport = min(site_biomass, depot_capacity)
+                        self.flow_depots_to_sites[depot_index, site_index] = biomass_to_transport
+                        depot_capacity -= biomass_to_transport
+
+        # # Distribute biomass from depots to refineries until the depots are emtpy or the refineries are full
         for depot_index in range(self.num_depots):
-            depot_center = self.depot_cluster_centers[depot_index]
+            depot_capacity = self.max_depot_capacity
 
-            # calculate the distance from the current site to the current depot
-            distances_to_depots = self.distance_matrix.iloc[site_index, self.depot_indices].values
+            for refinery_index in range(self.num_biorefineries):
+                refinery_capacity = self.max_refinery_capacity
 
-            # calculate the remaining capacity of the depot
-            depot_capacity = 20000 - self.flow_sites_to_depots[site_index, depot_index]
-
-            # loop through the depots based on their distances
-            for nearest_depot_index in np.argsort(distances_to_depots):
-                if depot_capacity <= 0:
-                    break
-
-                max_distance = np.max(self.distance_matrix)  # You can adjust this value as needed
-                if distances_to_depots[nearest_depot_index] <= max_distance:
-                    biomass_to_transport = min(biomass_at_site, depot_capacity)
-                    self.flow_sites_to_depots[site_index, nearest_depot_index] += biomass_to_transport
+                while depot_capacity > 0 and refinery_capacity > 0:
+                    biomass_to_transport = min(depot_capacity, refinery_capacity)
+                    self.flow_depots_to_refineries[depot_index, refinery_index] = biomass_to_transport
                     depot_capacity -= biomass_to_transport
+                    refinery_capacity -= biomass_to_transport
 
-                    # Update the biomass value at the site
-                    site_row[str(self.year)] -= biomass_to_transport
+        # write the flow matrices to csv files
+        biomass_demand_supply_matrix = self.flow_depots_to_sites
+        # transpose matrix such that rows are sites and columns are depots
+        biomass_demand_supply_matrix = biomass_demand_supply_matrix.T
+        biomass_demand_supply_matrix_df = process_flow_matrix(biomass_demand_supply_matrix, year_1, 'biomass')
+        # transform the destination indices to site location indices (using the dba.depot_indices)
+        biomass_demand_supply_matrix_df['destination_index'] = self.depot_indices[
+            biomass_demand_supply_matrix_df['destination_index'].values]
 
-        # distribute biomass from depots to refineries
-        for depot_index in range(self.num_depots):
-            depot_center = self.depot_cluster_centers[depot_index]
-
-            # calculate the distance from the current site to the current depot
-            distance_to_depot = self.distance_matrix[site_index, int(depot_center[0])]
-
-            # calculate the remaining capacity of the depot
-            depot_capacity = 20000 - self.flow_sites_to_depots[site_index, depot_index]
-
-            max_distance = np.max(self.distance_matrix)
-            # if the distance is within the maximum distance and there's remaining capacity in the depot
-            if distance_to_depot <= max_distance and depot_capacity > 0:
-                # calculate the biomass that can be transported to the depot
-                biomass_at_site = site_row[str(self.predictions_df.columns[-1])]
-                biomass_to_transport = min(biomass_at_site, depot_capacity)
-
-                # update the flow matrix
-                self.flow_sites_to_depots[site_index, depot_index] += biomass_to_transport
-                depot_capacity -= biomass_to_transport
-
-                # update the biomass value at the site
-                site_row[str(self.predictions_df.columns[-1])] -= biomass_to_transport
-
-                # update the remaining distance
-                max_distance -= distance_to_depot
-
-        # after looping through depots, if there's still biomass left at the site, distribute it among the remaining depots
-        for depot_index in range(self.num_depots):
-            biomass_at_site = site_row[str(self.predictions_df.columns[-1])]
-            depot_capacity = 20000 - self.flow_sites_to_depots[site_index, depot_index]
-
-            if biomass_at_site > 0 and depot_capacity > 0:
-                biomass_to_transport = min(biomass_at_site, depot_capacity)
-
-                self.flow_sites_to_depots[site_index, depot_index] += biomass_to_transport
-                depot_capacity -= biomass_to_transport
-
-                site_row[str(self.predictions_df.columns[-1])] -= biomass_to_transport
+        pellet_demand_supply_matrix = self.flow_depots_to_refineries
+        # transpose matrix such that rows are refineries and columns are depots
+        # pellet_demand_supply_matrix = pellet_demand_supply_matrix.T
+        pellet_demand_supply_matrix_df = process_flow_matrix(pellet_demand_supply_matrix, year_1, 'pellet')
+        # transform the destination indices to refinery location indices (using the dba.refinery_indices)
+        pellet_demand_supply_matrix_df['destination_index'] = self.refinery_indices[
+            pellet_demand_supply_matrix_df['destination_index'].values]
+        # transform the source indices to depot location indices (using the dba.depot_indices)
+        pellet_demand_supply_matrix_df['source_index'] = self.depot_indices[
+            pellet_demand_supply_matrix_df['source_index'].values]
+        biomass_demand_supply_matrix_df.to_csv(f'dataset/3.predictions/biomass_flow_{self.year}.csv', index=False)
+        pellet_demand_supply_matrix_df.to_csv(f'dataset/3.predictions/pellet_flow_{self.year}.csv', index=False)
 
     def print_results(self):
-        print("Flow from sites to depots:")
-        print(self.flow_sites_to_depots)
+        print("Flow from depots to sites:")
+        print(self.flow_depots_to_sites)
         print("\nFlow from depots to refineries:")
         print(self.flow_depots_to_refineries)
 
 
-# Example usage
-distance_matrix_file = 'dataset/1.initial_datasets/Distance_Matrix.csv'
-predictions_file = 'dataset/3.predictions/20230826Biomass_Predictions.csv'
-num_depots = 20
-num_biorefineries = 4
-max_depot_capacity = 20000
-max_refinery_capacity = 100000
+if __name__ == '__main__':
+    # Example usage
+    distance_matrix_file = 'dataset/1.initial_datasets/Distance_Matrix.csv'
+    predictions_file = 'dataset/3.predictions/20230826Biomass_Predictions.csv'
+    num_depots = 20
+    num_biorefineries = 4
+    max_depot_capacity = 20000
+    max_refinery_capacity = 100000
+    year_1 = '2019' # solving for 2019
+    year_2 = '2018' # but also using 2018 for clustering
 
-dba = DecisionBasedApproach(distance_matrix_file, predictions_file, num_depots, num_biorefineries, max_depot_capacity,
-                            max_refinery_capacity, '2018')
-dba.fit()
-dba.solve()
-dba.print_results()
+    dba = DecisionBasedApproach(distance_matrix_file, predictions_file, num_depots, num_biorefineries, max_depot_capacity,
+                                max_refinery_capacity, '2018', '2019')
+    dba.fit()
+    dba.solve()
+
